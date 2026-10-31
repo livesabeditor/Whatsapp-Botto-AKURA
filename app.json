@@ -1,55 +1,62 @@
 {
-    "name": "WhatsApp-Botto-Void",
-    "description": "Modular WhatsApp Bot",
-    "keywords": [
-      "bot",
-      "whatsapp",
-      "stickers",
-      "whatsapp-stickers",
-      "anime",
-      "whatsapp-bot",
-      "whatsapp-sticker-bot",
-      "whatsapp-botto"
-    ],
-    "website": "https://github.com/Synthesized-Infinity/Whatsapp-Botto-void#readme",
-    "repository": "https://github.com/Synthesized-Infinity/Whatsapp-Botto-void.git",
-    "logo": "https://i.ibb.co/HPqwr9Q/whatsapp-botto-void-init.png",
-    "success_url": "/",
-    "env": {
-      "NAME": {
-        "description": "Name of your bot"
-      },
-      "PREFIX": {
-        "description": "Prefix of your bot"
-      },
-      "SESSION": {
-        "description": "A string for the session to be classified and to get access to the server endpoints"
-      },
-      "MODS": {
-        "description": "The phone numbers of the users who you want to be admin for the bot (should be in international format without + and multiple numbers must be separated by a comma \",\")",
-        "required": false
-      },
-      "CRON": {
-        "description": "Cron string to clear chats in a cycle",
-        "required": false
-      },
-      "MONGO_URI": {
-        "description": "A secret String for Mongodb Connection.(Required)"
-      }
+  "name": "WhatsApp-Botto-AKURA",
+  "description": "AKURA modular WhatsApp bot",
+  "keywords": [
+    "bot",
+    "whatsapp",
+    "stickers",
+    "whatsapp-stickers",
+    "anime",
+    "whatsapp-bot",
+    "whatsapp-sticker-bot",
+    "whatsapp-botto",
+    "akura"
+  ],
+  "website": "https://github.com/livesabeditor/Whatsapp-Botto-AKURA#readme",
+  "repository": "https://github.com/livesabeditor/Whatsapp-Botto-AKURA.git",
+  "success_url": "/",
+  "env": {
+    "NAME": {
+      "description": "Bot display name",
+      "value": "AKURA"
     },
-    "buildpacks": [
-      {
-        "url": "heroku/nodejs"
-      },
-      {
-        "url": "https://github.com/PrajjwalDatir/heroku-buildpack-imagemagick.git"
-      },
-  
-      {
-        "url": "https://github.com/clhuang/heroku-buildpack-webp-binaries.git"
-      },
-      {
-        "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest.git"
-      }
-    ]
-  }
+    "PREFIX": {
+      "description": "Command prefix",
+      "value": "."
+    },
+    "SESSION": {
+      "description": "Private session identifier for the bot",
+      "value": "AKURA"
+    },
+    "OWNER_NUMBER": {
+      "description": "Private owner phone number in international format without +",
+      "required": false
+    },
+    "MODS": {
+      "description": "Additional moderator numbers in international format without +, comma-separated",
+      "required": false
+    },
+    "CRON": {
+      "description": "Cron string to clear chats in a cycle",
+      "required": false
+    },
+    "MONGO_URI": {
+      "description": "MongoDB connection URI (required)",
+      "required": true
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    },
+    {
+      "url": "https://github.com/PrajjwalDatir/heroku-buildpack-imagemagick.git"
+    },
+    {
+      "url": "https://github.com/clhuang/heroku-buildpack-webp-binaries.git"
+    },
+    {
+      "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest.git"
+    }
+  ]
+}

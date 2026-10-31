@@ -1,44 +1,39 @@
 <div align="center">
-<a href="https://ibb.co/wQ4GK21"><img src="https://i.ibb.co/HPqwr9Q/whatsapp-botto-void-init.png" alt="whatsapp-botto-void-init" border="0"></a>
+# **WhatsApp-Botto-AKURA**
+## [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![NodeJs](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/en/)
 
-# **WhatsApp-Botto-Void**
-[![CodeFactor](https://www.codefactor.io/repository/github/synthesized-infinity/whatsapp-botto-void/badge)](https://www.codefactor.io/repository/github/synthesized-infinity/whatsapp-botto-void)
-## [![WhatsApp Group](https://img.shields.io/badge/WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://chat.whatsapp.com/I4m8zLPwTme9II9aZWRZJ1) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![NodeJs](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/en/)
-
-> A Fully Modular and Efficient Bot <br>
-
-[![Deploy](https://www.herokucdn.com/deploy/button.png)](https://heroku.com/deploy)
+> A modular WhatsApp bot built with TypeScript.
 
 </div><br/>
-<br/>
 
-## ✨ Highlights
-- Fully Modular Design
-- Object Oriented
-- Written in [TypeScript](https://www.typescriptlang.org/)
-- Self-Resoting Auth
-- Built with [Baileys](https://github.com/adiwajshing/baileys) (The Best WhatsApp Library Out There) 
+## Highlights
 
-## 💻 Deploy/Hosting Guide
-- Section Moved to [Void-Guides](https://github.com/Synthesized-Infinity/Void-Guides)
-## 🍥 Features of the Repo
-- To view all features, click here➡️[Void_featuresList.md](https://github.com/Synthesized-Infinity/Whatsapp-Botto-Void/blob/main/Features.md)
+- Modular, object-oriented TypeScript codebase.
+- WhatsApp connection through Baileys.
+- `.flow` and `.support` show the same four AKURA group links.
+- Set the owner privately with the `OWNER_NUMBER` environment variable; use international digits without `+`.
 
+## Setup
 
-## 💪 Contribution
+1. Install the dependencies with `npm install`.
+2. Copy `.env.example` to `.env` and fill in `MONGO_URI`, your private `OWNER_NUMBER`, `QR_WEB_PASSWORD`, and a random `QR_WEB_SESSION_SECRET`.
+3. Keep `.env` out of version control. Do not put the pairing-page password, owner phone number, or relay token in public source.
+4. Run `npm run build`, then `npm start`.
 
-+ Feel free to open issues regarding any problems or if you have any feature requests
-+ Make sure to follow the ESLint Rules while editing the code and run `npm run prettier-format` before opening PRs
+The bot's QR relay is optional. To use it, set `QR_RELAY_URL` and `QR_RELAY_TOKEN` in the bot's private runtime environment to the values for the protected pairing site.
 
-## 🤝 Contributers
+## Features
 
-<a href="https://github.com/Synthesized-Infinity/Whatsapp-Botto-Void/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Synthesized-Infinity/Whatsapp-Botto-Void" />
-</a>
+See [Features.md](https://github.com/livesabeditor/Whatsapp-Botto-AKURA/blob/main/Features.md) for the command list.
 
+## Contributing
 
-## 🌐 Join Us
-### 🔵 Discord Server
-[![DISCORD](https://invidget.switchblade.xyz/Nzsb5weQFg)](https://discord.gg/Nzsb5weQFg)
-### 🟢 WhatsApp Group
-# [![WhatsApp Group](https://img.shields.io/badge/WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://chat.whatsapp.com/JlGNyRC9TMI07r1Fvt9fTU)
+Open an issue for bugs or feature requests. Run `npm run lint` and `npm run build` before opening a pull request.
+
+## Community
+
+The bot commands `.flow` and `.support` list the four AKURA WhatsApp communities configured in the source.
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE).

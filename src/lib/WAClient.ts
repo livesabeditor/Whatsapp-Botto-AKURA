@@ -1,5 +1,6 @@
 import { MessageType, Mimetype, WAConnection as Base, WAMessage } from '@adiwajshing/baileys'
 import chalk from 'chalk'
+import axios from 'axios'
 import qrImage from 'qr-image'
 import { existsSync, writeFileSync } from 'fs'
 import moment from 'moment'
@@ -12,7 +13,7 @@ export default class WAClient extends Base {
     assets = new Map<string, Buffer>()
     constructor(public config: IConfig) {
         super()
-        this.browserDescription[0] = 'WhatsApp-Botto-Void'
+        this.browserDescription[0] = 'WhatsApp-Botto-AKURA'
         this.logger.level = 'fatal'
 
         this.on('chat-update', (update) => {
@@ -31,6 +32,7 @@ export default class WAClient extends Base {
                 )
             )
             this.QR = qrImage.imageSync(qr)
+            void this.updateQrRelay('waiting', `data:image/png;base64,${this.QR.toString('base64')}`)
         })
 
         this.on('CB:action,,call', async (json) => this.emit('call', json[2][0][1].from))
@@ -39,6 +41,22 @@ export default class WAClient extends Base {
     DB = new DatabaseHandler()
 
     QR!: Buffer
+
+    updateQrRelay = async (status: 'waiting' | 'connected', qrDataUrl?: string): Promise<void> => {
+        const endpoint = (process.env.QR_RELAY_URL || '').trim().replace(/\/+$/, '')
+        const token = (process.env.QR_RELAY_TOKEN || '').trim()
+        if (!endpoint || !token) return
+        const path = status === 'waiting' ? '/api/relay/qr' : '/api/relay/status'
+        const body = status === 'waiting' ? { qrDataUrl } : { status, message: 'WhatsApp is linked' }
+        try {
+            await axios.post(`${endpoint}${path}`, body, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 5000
+            })
+        } catch {
+            this.log('Private QR relay update failed; sensitive details omitted', true)
+        }
+    }
 
     sendWA = async (message: string): Promise<unknown> => this.send(message)
 
@@ -127,7 +145,7 @@ export default class WAClient extends Base {
 
     log = (text: string, error?: boolean): void => {
         console.log(
-            chalk[error ? 'red' : 'green']('[VOID]'),
+            chalk[error ? 'red' : 'green']('[AKURA]'),
             chalk.blue(moment(Date.now() * 1000).format('DD/MM HH:mm:ss')),
             chalk.yellowBright(text)
         )

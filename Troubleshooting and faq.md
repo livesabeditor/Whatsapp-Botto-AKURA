@@ -1,14 +1,14 @@
-## Faq guide for Void
+## FAQ guide for AKURA
  <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRCG1Ejs__vHbFp6Gah9NMUnSyMu6d---oGcw&usqp=CAU" alt="troubleshooting banner" border="0">
 <div align="center"> <br>
-Nothing is perfect in the world or is made perfect, and so is our little project void is. So here we're providing you the troubleshooting guide to save your soul :v <br>
+Nothing is perfect, including our AKURA bot. This guide covers common setup and troubleshooting issues. <br>
 
 <div align="left"><br>
 
 
-## 1) Types of error one can get on Void
+## 1) Types of errors you may encounter with AKURA
 - There's not so many errors our repo can give you but a few of them are there and mostly they're the common reason why your bot is malfunctioning.
-- Errors depends on the method you're hosting void, one is Selfhosting on your pc💻 and other is on heroku deploy🌐
+- Errors depend on how you host AKURA, such as self-hosting on your PC💻 or deploying to a cloud host🌐
 - Lets look at both in details shall we?
 
 ## 🌐Heroku Deployers errors troubleshooting guide
@@ -38,4 +38,3 @@ Nothing is perfect in the world or is made perfect, and so is our little project
 
 <Br><strong>5) Why i can't scan my qr for connecting?</strong>
 - This error can surface either when Baileys library has updated or WhatsApp web is, for fixation you gotta re deploy your app from heroku.
-

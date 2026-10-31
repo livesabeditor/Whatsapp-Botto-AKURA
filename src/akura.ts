@@ -13,11 +13,15 @@ import AssetHandler from './Handlers/AssetHandler'
 import EventHandler from './Handlers/EventHandler'
 
 if (!process.env.MONGO_URI) throw new Error('MONGO URL IS NOT PROVIDED')
+const configuredNumbers = [...(process.env.OWNER_NUMBER || '').split(','), ...(process.env.MODS || '').split(',')]
+const mods = [...new Set(configuredNumbers.map((number) => number.replace(/\D/g, '')).filter(Boolean))].map(
+    (number) => `${number}@s.whatsapp.net`
+)
 const client = new WAClient({
-    name: process.env.NAME || 'Void',
-    session: process.env.SESSION || 'Void',
-    prefix: process.env.PREFIX || '!',
-    mods: (process.env.MODS || '').split(',').map((number) => `${number}@s.whatsapp.net`)
+    name: process.env.NAME || 'AKURA',
+    session: process.env.SESSION || 'AKURA',
+    prefix: process.env.PREFIX || '.',
+    mods
 })
 client.log('Starting...')
 
@@ -41,6 +45,7 @@ const start = async () => {
                 )}`
             )
         )
+        await client.updateQrRelay('connected')
         await client.saveAuthInfo(client.config.session)
         if (process.env.CRON) {
             if (!cron.validate(process.env.CRON))
