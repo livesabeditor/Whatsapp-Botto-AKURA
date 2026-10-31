@@ -43,7 +43,7 @@ export default class MessageHandler {
                 await this.client.setXp(M.sender.jid, command.config.baseXp || 10, 50)
             }
         } catch (err) {
-            return void this.client.log(err.message, true)
+            return void this.client.log(err instanceof Error ? err.message : String(err), true)
         }
     }
 

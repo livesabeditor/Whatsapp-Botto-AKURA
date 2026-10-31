@@ -21,7 +21,7 @@ export default class Command extends BaseCommand {
             console.log(output)
             out = JSON.stringify(output)
         } catch (err) {
-            out = err.message
+            out = err instanceof Error ? err.message : String(err)
         }
         return void (await M.reply(out))
     }

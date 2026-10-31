@@ -1,46 +1,64 @@
-import { MessageType, Mimetype, WAConnection as Base, WAMessage } from '@adiwajshing/baileys'
+import { EventEmitter } from 'events'
 import chalk from 'chalk'
 import axios from 'axios'
 import qrImage from 'qr-image'
-import { existsSync, writeFileSync } from 'fs'
 import moment from 'moment'
-import { join } from 'path'
-import { IConfig, IExtendedGroupMetadata, IGroupModel, ISession, ISimplifiedMessage, IUserModel } from '../typings'
+import pino from 'pino'
+import type { Contact, GroupMetadata, WAMessage, WASocket } from '@whiskeysockets/baileys'
+import { IConfig, IExtendedGroupMetadata, IGroupModel, ISimplifiedMessage, IUserModel } from '../typings'
 import Utils from './Utils'
 import DatabaseHandler from '../Handlers/DatabaseHandler'
+import MongoAuthState from './MongoAuthState'
+import { MessageType, MessageTypeValue, Mimetype, MimetypeValue } from './MessageTypes'
 
-export default class WAClient extends Base {
+type BaileysModule = typeof import('@whiskeysockets/baileys')
+type LegacyContact = Partial<Contact> & { id: string; jid: string; vname?: string }
+type LegacyCall = { from: string; id: string }
+type SendOptions = {
+    quoted?: WAMessage
+    caption?: string
+    mimetype?: string
+    contextInfo?: Record<string, unknown>
+    thumbnail?: Buffer
+    gifPlayback?: boolean
+}
+
+const importBaileys = new Function('return import("@whiskeysockets/baileys")') as () => Promise<BaileysModule>
+const DEFAULT_PROFILE_PICTURE = 'https://upload.wikimedia.org/wikipedia/commons/a/ac/Default_pfp.jpg'
+
+export default class WAClient extends EventEmitter {
     assets = new Map<string, Buffer>()
+    DB = new DatabaseHandler()
+    QR: Buffer | null = null
+    state: 'connecting' | 'open' | 'close' = 'connecting'
+    private socket?: WASocket
+    private baileys?: BaileysModule
+    private authStore?: MongoAuthState
+    private started = false
+    private reconnectScheduled = false
+    private readonly chatJids = new Set<string>()
+
+    contacts: Record<string, LegacyContact> = new Proxy<Record<string, LegacyContact>>(
+        {},
+        {
+            get: (target, key) => {
+                if (typeof key !== 'string') return Reflect.get(target, key)
+                return Reflect.get(target, key) || this.placeholderContact(key)
+            },
+            set: (target, key, value) => Reflect.set(target, key, value)
+        }
+    )
+
     constructor(public config: IConfig) {
         super()
-        this.browserDescription[0] = 'WhatsApp-Botto-AKURA'
-        this.logger.level = 'fatal'
-
-        this.on('chat-update', (update) => {
-            if (!update.messages) return void null
-            const messages = update.messages.all()
-            if (!messages[0]) return void null
-            this.emitNewMessage(this.simplifyMessage(messages[0]))
-        })
-
-        this.on('qr', (qr) => {
-            this.log(
-                chalk.redBright(
-                    `Scan the QR code above to continue | You can also authenticate at http://localhost:${
-                        process.env.PORT || 4000
-                    }`
-                )
-            )
-            this.QR = qrImage.imageSync(qr)
-            void this.updateQrRelay('waiting', `data:image/png;base64,${this.QR.toString('base64')}`)
-        })
-
-        this.on('CB:action,,call', async (json) => this.emit('call', json[2][0][1].from))
     }
 
-    DB = new DatabaseHandler()
-
-    QR!: Buffer
+    get user(): LegacyContact {
+        const account = this.socket?.user
+        if (!account) return { id: '', jid: '', notify: '', name: '' }
+        const jid = account.id || account.jid || ''
+        return { ...account, id: account.id || jid, jid, vname: account.verifiedName }
+    }
 
     updateQrRelay = async (status: 'waiting' | 'connected', qrDataUrl?: string): Promise<void> => {
         const endpoint = (process.env.QR_RELAY_URL || '').trim().replace(/\/+$/, '')
@@ -58,58 +76,176 @@ export default class WAClient extends Base {
         }
     }
 
-    sendWA = async (message: string): Promise<unknown> => this.send(message)
-
-    getAuthInfo = async (ID: string): Promise<ISession | null> => {
-        if (existsSync(`./${ID}_session.json`)) return require(join(__dirname, '..', '..', `./${ID}_session.json`))
-        const session = await this.DB.session.findOne({ ID })
-        if (!session) return null
-        return session.session
+    connect = async (): Promise<void> => {
+        if (this.started) return
+        this.started = true
+        this.baileys = await importBaileys()
+        this.authStore = await MongoAuthState.create(
+            this.config.session,
+            this.baileys.initAuthCreds,
+            this.baileys.BufferJSON
+        )
+        if (this.authStore.legacySessionDetected)
+            this.log('A legacy session was found and preserved; this client needs its own WhatsApp pairing.', true)
+        await this.authStore.saveCreds()
+        await this.openSocket()
     }
 
-    saveAuthInfo = async (ID: string): Promise<void> => {
-        const session = await this.DB.session.findOne({ ID })
-        if (!session) return void (await new this.DB.session({ ID, session: this.base64EncodedAuthInfo() }).save())
-        writeFileSync(`./${ID}_session.json`, JSON.stringify(this.base64EncodedAuthInfo(), null, '\t'))
-        this.log(chalk.green(`Saved AuthInfo!`))
-        return void (await this.DB.session.updateOne({ ID }, { $set: { session: this.base64EncodedAuthInfo() } }))
+    private openSocket = async (): Promise<void> => {
+        if (!this.baileys || !this.authStore) throw new Error('WhatsApp auth state is unavailable')
+        const socket = this.baileys.default({
+            auth: this.authStore.state,
+            browser: ['AKURA', 'Chrome', '1.0.0'],
+            logger: pino({ level: 'silent' }) as any
+        })
+        this.socket = socket
+        this.state = 'connecting'
+
+        socket.ev.on('connection.update', async (update) => {
+            if (update.qr) {
+                this.QR = qrImage.imageSync(update.qr)
+                this.log(`WhatsApp QR is ready | Authenticate at the protected AKURA pairing page on port ${process.env.PORT || 4040}`)
+                void this.updateQrRelay('waiting', `data:image/png;base64,${this.QR.toString('base64')}`)
+            }
+            if (update.connection === 'open') {
+                this.state = 'open'
+                this.QR = null
+                this.reconnectScheduled = false
+                void this.updateQrRelay('connected')
+                this.emit('open')
+            }
+            if (update.connection === 'close') {
+                this.state = 'close'
+                this.QR = null
+                const statusCode = (update.lastDisconnect?.error as any)?.output?.statusCode
+                const loggedOut = statusCode === this.baileys?.DisconnectReason.loggedOut
+                this.log(loggedOut ? 'WhatsApp session was revoked; preparing a fresh pairing.' : 'WhatsApp connection closed; reconnecting.', true)
+                if (loggedOut) {
+                    try {
+                        await this.authStore?.reset()
+                    } catch {
+                        this.log('Fresh WhatsApp credentials could not be stored; reconnect paused.', true)
+                        return
+                    }
+                }
+                this.scheduleReconnect()
+            }
+        })
+
+        socket.ev.on('creds.update', async () => {
+            try {
+                await this.authStore?.saveCreds()
+            } catch {
+                this.log('WhatsApp credentials could not be saved to the private database.', true)
+            }
+        })
+
+        socket.ev.on('messages.upsert', ({ messages, type }) => {
+            if (type !== 'notify') return
+            for (const message of messages) {
+                const jid = message.key.remoteJid
+                if (jid) this.chatJids.add(jid)
+                if (!message.key.fromMe) void this.emitNewMessage(message)
+            }
+        })
+
+        socket.ev.on('group-participants.update', (event) => {
+            this.emit('group-participants-update', {
+                jid: event.id,
+                participants: event.participants,
+                actor: event.author || undefined,
+                action: event.action
+            })
+        })
+
+        socket.ev.on('call', (calls) => {
+            for (const call of calls) {
+                if (call.status === 'offer') this.emit('call', { from: call.from, id: call.id } as LegacyCall)
+            }
+        })
+
+        socket.ev.on('contacts.upsert', (items) => items.forEach((contact) => this.storeContact(contact)))
+        socket.ev.on('contacts.update', (items) => {
+            for (const item of items) {
+                if (item.id) this.storeContact({ ...this.contacts[item.id], ...item, id: item.id } as Contact)
+            }
+        })
+        socket.ev.on('messaging-history.set', ({ chats, contacts }) => {
+            chats.forEach((chat) => chat.id && this.chatJids.add(chat.id))
+            contacts.forEach((contact) => this.storeContact(contact))
+        })
+        socket.ev.on('chats.upsert', (chats) => chats.forEach((chat) => chat.id && this.chatJids.add(chat.id)))
     }
 
-    emitNewMessage = async (M: Promise<ISimplifiedMessage>): Promise<void> => void this.emit('new-message', await M)
+    private scheduleReconnect = (): void => {
+        if (this.reconnectScheduled) return
+        this.reconnectScheduled = true
+        const timer = setTimeout(() => {
+            this.reconnectScheduled = false
+            void this.openSocket().catch(() => this.scheduleReconnect())
+        }, 3000)
+        timer.unref?.()
+    }
 
-    supportedMediaMessages = [MessageType.image, MessageType.video]
+    private storeContact = (contact: Contact): void => {
+        const jid = contact.jid || contact.id
+        const normalized: LegacyContact = { ...contact, jid, vname: contact.verifiedName }
+        for (const id of [contact.id, contact.jid, contact.lid]) if (id) this.contacts[id] = normalized
+    }
 
-    simplifyMessage = async (M: WAMessage): Promise<ISimplifiedMessage> => {
-        if (M.message?.ephemeralMessage) M.message = M.message.ephemeralMessage.message
-        const jid = M.key.remoteJid || ''
-        const chat = jid.endsWith('g.us') ? 'group' : 'dm'
-        const type = (Object.keys(M.message || {})[0] || '') as MessageType
-        const user = chat === 'group' ? M.participant : jid
-        const info = this.getContact(user)
-        const groupMetadata: IExtendedGroupMetadata | null = chat === 'group' ? await this.groupMetadata(jid) : null
-        if (groupMetadata)
-            groupMetadata.admins = groupMetadata.participants.filter((user) => user.isAdmin).map((user) => user.jid)
+    private placeholderContact = (jid: string): LegacyContact => {
+        const username = jid.split('@')[0]
+        return { id: jid, jid, notify: username, name: username }
+    }
+
+    updateQrRelayStatus = (): Promise<void> => this.updateQrRelay('connected')
+
+    emitNewMessage = async (message: WAMessage): Promise<void> => {
+        this.emit('new-message', await this.simplifyMessage(message))
+    }
+
+    supportedMediaMessages: string[] = [MessageType.image, MessageType.video]
+
+    simplifyMessage = async (message: WAMessage): Promise<ISimplifiedMessage> => {
+        const normalized = this.baileys?.normalizeMessageContent(message.message) || message.message || {}
+        message.message = normalized
+        const jid = message.key.remoteJid || ''
+        const chat = jid.endsWith('@g.us') ? 'group' : 'dm'
+        const senderJid = chat === 'group' ? message.key.participant || jid : jid
+        const type = (Object.keys(normalized)[0] || '') as MessageTypeValue
+        const groupMetadata = chat === 'group' ? await this.groupMetadata(jid).catch(() => null) : null
+        const contact = this.getContact(senderJid)
         const sender = {
-            jid: user,
-            username: info.notify || info.vname || info.name || 'User',
-            isAdmin: groupMetadata && groupMetadata.admins ? groupMetadata.admins.includes(user) : false
+            jid: senderJid,
+            username: contact.notify || contact.vname || contact.name || 'User',
+            isAdmin: Boolean(groupMetadata?.admins?.includes(senderJid))
         }
+        const typedMessage = normalized as Record<string, any>
         const content: string | null =
-            type === MessageType.text && M.message?.conversation
-                ? M.message.conversation
+            type === MessageType.text
+                ? typedMessage.conversation || null
+                : type === MessageType.extendedText
+                ? typedMessage.extendedTextMessage?.text || null
                 : this.supportedMediaMessages.includes(type)
-                ? this.supportedMediaMessages
-                      .map((type) => M.message?.[type as MessageType.image | MessageType.video]?.caption)
-                      .filter((caption) => caption)[0] || ''
-                : type === MessageType.extendedText && M.message?.extendedTextMessage?.text
-                ? M.message?.extendedTextMessage.text
+                ? typedMessage[type]?.caption || ''
                 : null
-        const quoted: ISimplifiedMessage['quoted'] = {}
-        quoted.message = M?.message?.[type as MessageType.extendedText]?.contextInfo?.quotedMessage
-            ? JSON.parse(JSON.stringify(M).replace('quotedM', 'm')).message?.[type as MessageType.extendedText]
-                  .contextInfo
-            : null
-        quoted.sender = M.message?.[type as MessageType.extendedText]?.contextInfo?.participant || null
+        const contextInfo = typedMessage[type]?.contextInfo
+        const quotedContent = contextInfo?.quotedMessage
+        const quoted: ISimplifiedMessage['quoted'] = quotedContent
+            ? {
+                  message: {
+                      key: {
+                          remoteJid: jid,
+                          participant: contextInfo.participant || undefined,
+                          fromMe: contextInfo.participant === this.user.jid,
+                          id: contextInfo.stanzaId || ''
+                      },
+                      message: this.baileys?.normalizeMessageContent(quotedContent) || quotedContent
+                  } as WAMessage,
+                  sender: contextInfo.participant || (contextInfo.participant === this.user.jid ? this.user.jid : null)
+              }
+            : { message: null, sender: contextInfo?.participant || null }
+        const mentions = (contextInfo?.mentionedJid || []).filter((value: unknown): value is string => typeof value === 'string')
         return {
             type,
             content,
@@ -118,30 +254,121 @@ export default class WAClient extends Base {
             quoted,
             args: content?.split(' ') || [],
             reply: async (
-                content: string | Buffer,
-                type?: MessageType,
-                mime?: Mimetype,
+                replyContent: string | Buffer,
+                replyType?: MessageTypeValue,
+                mime?: MimetypeValue,
                 mention?: string[],
                 caption?: string,
                 thumbnail?: Buffer
             ) => {
-                const options = {
-                    quoted: M,
+                await this.sendMessage(jid, replyContent, replyType || MessageType.text, {
+                    quoted: message,
                     caption,
                     mimetype: mime,
-                    contextInfo: { mentionedJid: mention }
-                }
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                if (thumbnail) (options as any).thumbnail = thumbnail
-                await this.sendMessage(jid, content, type || MessageType.text, options)
+                    contextInfo: mention ? { mentionedJid: mention } : undefined,
+                    thumbnail
+                })
             },
-            mentioned: this.getMentionedUsers(M, type),
+            mentioned: mentions,
             from: jid,
             groupMetadata,
-            WAMessage: M,
+            WAMessage: message,
             urls: this.util.getUrls(content || '')
         }
     }
+
+    sendMessage = async (
+        jid: string,
+        content: string | Buffer,
+        type: MessageTypeValue = MessageType.text,
+        options: SendOptions = {}
+    ): Promise<unknown> => {
+        if (!this.socket) throw new Error('WhatsApp socket is not connected')
+        const messageOptions: Record<string, unknown> = {}
+        if (options.quoted) messageOptions.quoted = options.quoted
+        const contextInfo = options.contextInfo
+        let payload: Record<string, unknown>
+        const value = typeof content === 'string' ? content : content
+        if (type === MessageType.image) {
+            payload = { image: value, caption: options.caption, mimetype: options.mimetype, contextInfo }
+            if (options.thumbnail) payload.jpegThumbnail = options.thumbnail.toString('base64')
+        } else if (type === MessageType.video) {
+            payload = {
+                video: value,
+                caption: options.caption,
+                mimetype: options.mimetype,
+                gifPlayback: options.gifPlayback || options.mimetype === Mimetype.gif,
+                contextInfo
+            }
+        } else if (type === MessageType.audio) {
+            payload = { audio: value, mimetype: options.mimetype, contextInfo }
+        } else if (type === MessageType.sticker) {
+            payload = { sticker: value }
+        } else if (type === MessageType.document) {
+            payload = { document: value, mimetype: options.mimetype || 'application/octet-stream', caption: options.caption, contextInfo }
+        } else {
+            payload = { text: typeof content === 'string' ? content : content.toString('utf8'), contextInfo }
+        }
+        return this.socket.sendMessage(jid, payload as any, messageOptions as any)
+    }
+
+    downloadMediaMessage = async (message: WAMessage): Promise<Buffer> => {
+        if (!this.baileys) this.baileys = await importBaileys()
+        return (await this.baileys.downloadMediaMessage(message, 'buffer', {})) as Buffer
+    }
+
+    getProfilePicture = async (jid: string): Promise<string> => {
+        if (!this.socket) throw new Error('WhatsApp socket is not connected')
+        return (await this.socket.profilePictureUrl(jid, 'image').catch(() => undefined)) || DEFAULT_PROFILE_PICTURE
+    }
+
+    getStatus = async (jid: string): Promise<{ status?: string }> => {
+        if (!this.socket) return {}
+        const result = await this.socket.fetchStatus(jid).catch(() => undefined)
+        return (result?.[0] || {}) as { status?: string }
+    }
+
+    groupMetadata = async (jid: string): Promise<IExtendedGroupMetadata> => {
+        if (!this.socket) throw new Error('WhatsApp socket is not connected')
+        const metadata: GroupMetadata = await this.socket.groupMetadata(jid)
+        const participants = metadata.participants.map((participant) => ({
+            ...participant,
+            jid: participant.id,
+            isAdmin: participant.isAdmin || participant.admin === 'admin' || participant.admin === 'superadmin'
+        }))
+        return {
+            ...metadata,
+            participants,
+            admins: participants.filter((participant) => participant.isAdmin).map((participant) => participant.jid)
+        }
+    }
+
+    fetchGroupMetadataFromWA = (jid: string): Promise<IExtendedGroupMetadata> => this.groupMetadata(jid)
+
+    groupInviteCode = async (jid: string): Promise<string | undefined> => this.requireSocket().groupInviteCode(jid)
+
+    groupRemove = async (jid: string, participants: string[]): Promise<unknown> =>
+        this.requireSocket().groupParticipantsUpdate(jid, participants, 'remove')
+
+    groupMakeAdmin = async (jid: string, participants: string[]): Promise<unknown> =>
+        this.requireSocket().groupParticipantsUpdate(jid, participants, 'promote')
+
+    groupDemoteAdmin = async (jid: string, participants: string[]): Promise<unknown> =>
+        this.requireSocket().groupParticipantsUpdate(jid, participants, 'demote')
+
+    groupLeave = async (jid: string): Promise<void> => this.requireSocket().groupLeave(jid)
+
+    deleteMessage = async (jid: string, key: WAMessage['key']): Promise<unknown> =>
+        this.requireSocket().sendMessage(jid, { delete: key })
+
+    rejectCall = async (caller: string, callID: string): Promise<void> => this.requireSocket().rejectCall(callID, caller)
+
+    private requireSocket = (): WASocket => {
+        if (!this.socket) throw new Error('WhatsApp socket is not connected')
+        return this.socket
+    }
+
+    getContact = (jid: string): LegacyContact => this.contacts[jid] || this.placeholderContact(jid)
 
     log = (text: string, error?: boolean): void => {
         console.log(
@@ -151,70 +378,36 @@ export default class WAClient extends Base {
         )
     }
 
-    getMentionedUsers = (M: WAMessage, type: string): string[] => {
-        const notEmpty = <TValue>(value: TValue | null | undefined): value is TValue =>
-            value !== null && value !== undefined
-        const array = M?.message?.[type as MessageType.extendedText]?.contextInfo?.mentionedJid
-            ? M?.message[type as MessageType.extendedText]?.contextInfo?.mentionedJid
-            : []
-        return (array || []).filter(notEmpty)
-    }
-
-    //eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    getContact = (jid: string) => {
-        return this.contacts[jid] || {}
-    }
-
     getUser = async (jid: string): Promise<IUserModel> => {
         let user = await this.DB.user.findOne({ jid })
-        if (!user)
-            user = await new this.DB.user({
-                jid
-            }).save()
+        if (!user) user = await new this.DB.user({ jid }).save()
         return user
     }
 
     banUser = async (jid: string): Promise<void> => {
         const result = await this.DB.user.updateOne({ jid }, { $set: { ban: true } })
-        if (!result.nModified)
-            await new this.DB.user({
-                jid,
-                ban: true
-            }).save()
+        if (!result.nModified) await new this.DB.user({ jid, ban: true }).save()
     }
 
     unbanUser = async (jid: string): Promise<void> => {
         const result = await this.DB.user.updateOne({ jid }, { $set: { ban: false } })
-        if (!result.nModified)
-            await new this.DB.user({
-                jid,
-                ban: false
-            }).save()
+        if (!result.nModified) await new this.DB.user({ jid, ban: false }).save()
     }
 
     setXp = async (jid: string, min: number, max: number): Promise<void> => {
         const Xp = Math.floor(Math.random() * max) + min
         const result = await this.DB.user.updateOne({ jid }, { $inc: { Xp } })
-        if (!result.nModified)
-            await new this.DB.user({
-                jid,
-                Xp
-            }).save()
+        if (!result.nModified) await new this.DB.user({ jid, Xp }).save()
     }
 
     modifyAllChats = async (
         action: 'archive' | 'unarchive' | 'pin' | 'unpin' | 'mute' | 'unmute' | 'delete' | 'clear'
     ): Promise<{ status: 200 | 500 }> => {
-        const chats = this.chats.all()
-        this.setMaxListeners(25)
-        try {
-            for (const chat of chats) {
-                await this.modifyChat(chat.jid, action)
-            }
-            return { status: 200 }
-        } catch (err) {
+        if (action === 'clear') {
+            this.log('Bulk chat clearing was not run: the new API requires explicit message-range data.', true)
             return { status: 500 }
         }
+        return { status: 500 }
     }
 
     util = new Utils()
