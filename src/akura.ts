@@ -4,7 +4,6 @@ config()
 
 import MessageHandler from './Handlers/MessageHandler'
 import WAClient from './lib/WAClient'
-import Server from './lib/Server'
 import mongoose from 'mongoose'
 import chalk from 'chalk'
 import cron from 'node-cron'
@@ -34,8 +33,6 @@ assetHandler.loadAssets()
 
 const db = mongoose.connection
 
-new Server(Number(process.env.PORT) || 4040, client)
-
 const start = async () => {
     client.once('open', async () => {
         client.log(
@@ -45,7 +42,6 @@ const start = async () => {
                 )}`
             )
         )
-        await client.updateQrRelay('connected')
         await client.saveAuthInfo(client.config.session)
         if (process.env.CRON) {
             if (!cron.validate(process.env.CRON))
