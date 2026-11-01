@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "description": "AKURA WhatsApp bot built with TypeScript",
   "main": "dist/akura.js",
-  "engines": {
-    "node": ">=20.9.0"
-  },
   "scripts": {
     "build": "tsc -p .",
     "start": "node dist/akura.js",
@@ -41,13 +38,13 @@
     "@typescript-eslint/parser": "^4.22.1",
     "eslint": "^7.26.0",
     "prettier": "^2.2.1",
-    "typescript": "^4.9.5"
+    "typescript": "^4.2.4"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.24",
+    "@adiwajshing/baileys": "^3.5.1",
     "@types/qr-image": "^3.2.3",
     "axios": "^0.21.2",
-    "canvas": "3.2.3",
+    "canvas": "^2.8.0",
     "chalk": "^4.1.1",
     "chess-image-generator-ts": "^1.0.0",
     "chess-node": "^1.1.0",
@@ -62,15 +59,10 @@
     "mongoose": "^5.12.12",
     "node-cron": "^3.0.0",
     "npm": "^7.17.0",
-    "pino": "^9.6.0",
     "qr-image": "^3.2.0",
     "spotifydl-core": "^0.1.2",
     "wa-sticker-formatter": "^3.6.0",
     "yt-search": "^2.9.0",
     "ytdl-core": "^4.8.3"
-  },
-  "overrides": {
-    "canvas": "3.2.3",
-    "re2": "1.23.3"
   }
 }

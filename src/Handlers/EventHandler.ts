@@ -1,5 +1,4 @@
-import type { ParticipantAction } from '@whiskeysockets/baileys'
-import { MessageType } from '../lib/MessageTypes'
+import { MessageType, WAParticipantAction } from '@adiwajshing/baileys'
 import chalk from 'chalk'
 import request from '../lib/request'
 import WAClient from '../lib/WAClient'
@@ -48,5 +47,5 @@ interface IEvent {
     jid: string
     participants: string[]
     actor?: string | undefined
-    action: ParticipantAction
+    action: WAParticipantAction
 }

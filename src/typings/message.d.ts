@@ -1,15 +1,14 @@
-import type { WAMessage } from '@whiskeysockets/baileys'
-import { MessageTypeValue, MimetypeValue } from '../lib/MessageTypes'
+import { MessageType, Mimetype, WAMessage } from '@adiwajshing/baileys'
 import { IExtendedGroupMetadata } from '.'
 
 export interface ISimplifiedMessage {
-    type: MessageTypeValue
+    type: MessageType
     content: string | null
     args: string[]
     reply(
         content: string | Buffer,
-        type?: MessageTypeValue,
-        mime?: MimetypeValue,
+        type?: MessageType,
+        mime?: Mimetype,
         mention?: string[],
         caption?: string,
         thumbnail?: Buffer

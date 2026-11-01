@@ -1,4 +1,4 @@
-import { MessageType } from '../../lib/MessageTypes'
+import { MessageType } from '@adiwajshing/baileys'
 import MessageHandler from '../../Handlers/MessageHandler'
 import BaseCommand from '../../lib/BaseCommand'
 import redditFetcher, { IRedditResponse } from '../../lib/redditFetcher'
