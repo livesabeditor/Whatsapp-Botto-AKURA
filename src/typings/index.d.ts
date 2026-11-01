@@ -1,14 +1,14 @@
-import { WAGroupMetadata } from '@adiwajshing/baileys'
+import type { GroupMetadata } from '@whiskeysockets/baileys'
 
 export * from './message'
 export * from './command'
 export * from './mongo'
+
 export interface IConfig {
     name: string
     mods?: string[]
     prefix: string
     session: string
-    mods: string[]
 }
 
 export interface IParsedArgs {
@@ -17,7 +17,8 @@ export interface IParsedArgs {
     joined: string
 }
 
-export interface IExtendedGroupMetadata extends WAGroupMetadata {
+export type IExtendedGroupMetadata = Omit<GroupMetadata, 'participants'> & {
+    participants: Array<GroupMetadata['participants'][number] & { jid: string }>
     admins?: string[]
 }
 

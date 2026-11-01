@@ -11,6 +11,10 @@ const SessionSchema = new Schema({
         type: Object,
         required: false,
         unique: true
+    },
+    baileysCreds: {
+        type: Schema.Types.Mixed,
+        required: false
     }
 })
 

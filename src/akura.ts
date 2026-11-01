@@ -7,7 +7,6 @@ import WAClient from './lib/WAClient'
 import Server from './lib/Server'
 import mongoose from 'mongoose'
 import chalk from 'chalk'
-import cron from 'node-cron'
 import CallHandler from './Handlers/CallHandler'
 import AssetHandler from './Handlers/AssetHandler'
 import EventHandler from './Handlers/EventHandler'
@@ -38,39 +37,26 @@ new Server(Number(process.env.PORT) || 4040, client)
 
 const start = async () => {
     client.once('open', async () => {
+        const account = client.user
         client.log(
             chalk.green(
                 `Connected to WhatsApp as ${chalk.blueBright(
-                    client.user.notify || client.user.vname || client.user.name || client.user.jid.split('@')[0]
+                    account.notify || account.vname || account.name || account.jid.split('@')[0]
                 )}`
             )
         )
-        await client.updateQrRelay('connected')
-        await client.saveAuthInfo(client.config.session)
-        if (process.env.CRON) {
-            if (!cron.validate(process.env.CRON))
-                return void client.log(`Invalid Cron String: ${chalk.bgRedBright(process.env.CRON)}`, true)
-            client.log(`Cron Job for clearing all chats is set for ${chalk.bgGreen(process.env.CRON)}`)
-            cron.schedule(process.env.CRON, async () => {
-                client.log('Clearing All Chats...')
-                await client.modifyAllChats('clear')
-                client.log('Cleared all Chats!')
-            })
-        }
+        if (process.env.CRON)
+            client.log('Configured bulk chat-clearing schedule was not started; safe message-range behavior is not yet verified.', true)
     })
 
-    client.on('CB:Call', async (json) => {
-        const isOffer = json[1]['type'] == 'offer'
-        const number = `${(json[1]['from'] as string).split('@')[0]}@s.whatsapp.net`
-        if (!isOffer) return void null
-        client.log(`${chalk.blue('CALL')} From ${client.contacts[number].notify || number}`)
-        await callHandler.rejectCall(number, json[1].id)
+    client.on('call', async (call: { from: string; id: string }) => {
+        const number = call.from
+        client.log(`${chalk.blue('CALL')} From ${client.getContact(number).notify || number}`)
+        await callHandler.rejectCall(number, call.id)
     })
 
     client.on('new-message', messageHandler.handleMessage)
-
     client.on('group-participants-update', eventHandler.handle)
-
     await client.connect()
 }
 
@@ -82,8 +68,5 @@ mongoose.connect(encodeURI(process.env.MONGO_URI), {
 
 db.once('open', () => {
     client.log(chalk.green('Connected to Database!'))
-    client.getAuthInfo(client.config.session).then((session) => {
-        if (session) client.loadAuthInfo(session)
-        start()
-    })
+    void start()
 })

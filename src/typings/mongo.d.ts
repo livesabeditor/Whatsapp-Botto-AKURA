@@ -12,6 +12,7 @@ export interface IDisabledCommandModel extends Document {
 export interface ISessionModel extends Document {
     ID: string
     session: ISession
+    baileysCreds?: unknown
 }
 
 export interface IDBModels {
