@@ -9,16 +9,18 @@
 ## Highlights
 
 - Modular, object-oriented TypeScript codebase.
-- WhatsApp connection through the repository's existing Baileys client.
+- WhatsApp connection through Baileys.
 - `.flow` and `.support` show the same four AKURA group links.
 - Set the owner privately with the `OWNER_NUMBER` environment variable; use international digits without `+`.
 
 ## Setup
 
 1. Install the dependencies with `npm install`.
-2. Copy `.env.example` to `.env` and fill in `MONGO_URI` and your private `OWNER_NUMBER`.
-3. Keep `.env` out of version control and never put the owner phone number in public source.
+2. Copy `.env.example` to `.env` and fill in `MONGO_URI`, your private `OWNER_NUMBER`, `QR_WEB_PASSWORD`, and a random `QR_WEB_SESSION_SECRET`.
+3. Keep `.env` out of version control. Do not put the pairing-page password, owner phone number, or relay token in public source.
 4. Run `npm run build`, then `npm start`.
+
+The bot's QR relay is optional. To use it, set `QR_RELAY_URL` and `QR_RELAY_TOKEN` in the bot's private runtime environment to the values for the protected pairing site.
 
 ## Features
 

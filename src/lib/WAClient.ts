@@ -1,5 +1,6 @@
 import { MessageType, Mimetype, WAConnection as Base, WAMessage } from '@adiwajshing/baileys'
 import chalk from 'chalk'
+import axios from 'axios'
 import qrImage from 'qr-image'
 import { existsSync, writeFileSync } from 'fs'
 import moment from 'moment'
@@ -24,9 +25,14 @@ export default class WAClient extends Base {
 
         this.on('qr', (qr) => {
             this.log(
-                chalk.redBright('Scan the QR code above to continue')
+                chalk.redBright(
+                    `Scan the QR code above to continue | You can also authenticate at http://localhost:${
+                        process.env.PORT || 4000
+                    }`
+                )
             )
             this.QR = qrImage.imageSync(qr)
+            void this.updateQrRelay('waiting', `data:image/png;base64,${this.QR.toString('base64')}`)
         })
 
         this.on('CB:action,,call', async (json) => this.emit('call', json[2][0][1].from))
@@ -35,6 +41,22 @@ export default class WAClient extends Base {
     DB = new DatabaseHandler()
 
     QR!: Buffer
+
+    updateQrRelay = async (status: 'waiting' | 'connected', qrDataUrl?: string): Promise<void> => {
+        const endpoint = (process.env.QR_RELAY_URL || '').trim().replace(/\/+$/, '')
+        const token = (process.env.QR_RELAY_TOKEN || '').trim()
+        if (!endpoint || !token) return
+        const path = status === 'waiting' ? '/api/relay/qr' : '/api/relay/status'
+        const body = status === 'waiting' ? { qrDataUrl } : { status, message: 'WhatsApp is linked' }
+        try {
+            await axios.post(`${endpoint}${path}`, body, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 5000
+            })
+        } catch {
+            this.log('Private QR relay update failed; sensitive details omitted', true)
+        }
+    }
 
     sendWA = async (message: string): Promise<unknown> => this.send(message)
 
