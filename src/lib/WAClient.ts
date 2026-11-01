@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events'
 import chalk from 'chalk'
-import axios from 'axios'
 import qrImage from 'qr-image'
 import moment from 'moment'
 import pino from 'pino'
@@ -60,22 +59,6 @@ export default class WAClient extends EventEmitter {
         return { ...account, id: account.id || jid, jid, vname: account.verifiedName }
     }
 
-    updateQrRelay = async (status: 'waiting' | 'connected', qrDataUrl?: string): Promise<void> => {
-        const endpoint = (process.env.QR_RELAY_URL || '').trim().replace(/\/+$/, '')
-        const token = (process.env.QR_RELAY_TOKEN || '').trim()
-        if (!endpoint || !token) return
-        const path = status === 'waiting' ? '/api/relay/qr' : '/api/relay/status'
-        const body = status === 'waiting' ? { qrDataUrl } : { status, message: 'WhatsApp is linked' }
-        try {
-            await axios.post(`${endpoint}${path}`, body, {
-                headers: { Authorization: `Bearer ${token}` },
-                timeout: 5000
-            })
-        } catch {
-            this.log('Private QR relay update failed; sensitive details omitted', true)
-        }
-    }
-
     connect = async (): Promise<void> => {
         if (this.started) return
         this.started = true
@@ -105,13 +88,11 @@ export default class WAClient extends EventEmitter {
             if (update.qr) {
                 this.QR = qrImage.imageSync(update.qr)
                 this.log(`WhatsApp QR is ready | Authenticate at the protected AKURA pairing page on port ${process.env.PORT || 4040}`)
-                void this.updateQrRelay('waiting', `data:image/png;base64,${this.QR.toString('base64')}`)
             }
             if (update.connection === 'open') {
                 this.state = 'open'
                 this.QR = null
                 this.reconnectScheduled = false
-                void this.updateQrRelay('connected')
                 this.emit('open')
             }
             if (update.connection === 'close') {
@@ -119,15 +100,11 @@ export default class WAClient extends EventEmitter {
                 this.QR = null
                 const statusCode = (update.lastDisconnect?.error as any)?.output?.statusCode
                 const loggedOut = statusCode === this.baileys?.DisconnectReason.loggedOut
-                this.log(loggedOut ? 'WhatsApp session was revoked; preparing a fresh pairing.' : 'WhatsApp connection closed; reconnecting.', true)
                 if (loggedOut) {
-                    try {
-                        await this.authStore?.reset()
-                    } catch {
-                        this.log('Fresh WhatsApp credentials could not be stored; reconnect paused.', true)
-                        return
-                    }
+                    this.log('WhatsApp reports this session is logged out. Saved auth is preserved; owner action is required.', true)
+                    return
                 }
+                this.log('WhatsApp connection closed; reconnecting.', true)
                 this.scheduleReconnect()
             }
         })
@@ -197,8 +174,6 @@ export default class WAClient extends EventEmitter {
         const username = jid.split('@')[0]
         return { id: jid, jid, notify: username, name: username }
     }
-
-    updateQrRelayStatus = (): Promise<void> => this.updateQrRelay('connected')
 
     emitNewMessage = async (message: WAMessage): Promise<void> => {
         this.emit('new-message', await this.simplifyMessage(message))

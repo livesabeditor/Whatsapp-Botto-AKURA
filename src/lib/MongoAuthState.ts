@@ -20,7 +20,6 @@ export default class MongoAuthState {
     private constructor(
         private readonly id: string,
         creds: AuthenticationCreds,
-        private readonly initAuthCreds: () => AuthenticationCreds,
         private readonly bufferJSON: BufferJSONHelpers,
         legacySessionDetected: boolean
     ) {
@@ -46,7 +45,7 @@ export default class MongoAuthState {
                   bufferJSON.reviver
               ) as AuthenticationCreds)
             : initAuthCreds()
-        return new MongoAuthState(id, creds, initAuthCreds, bufferJSON, Boolean(existing?.session && !savedCreds))
+        return new MongoAuthState(id, creds, bufferJSON, Boolean(existing?.session && !savedCreds))
     }
 
     saveCreds = async (): Promise<void> => {
@@ -60,20 +59,6 @@ export default class MongoAuthState {
             ).exec()
         })
     }
-
-    reset = async (): Promise<void> =>
-        this.enqueue(async () => {
-            await AuthKeyModel.deleteMany({ ID: this.id }).exec()
-            const freshCreds = this.initAuthCreds()
-            const serialized = JSON.stringify(freshCreds, this.bufferJSON.replacer)
-            if (!serialized) throw new Error('Could not serialize fresh WhatsApp credentials')
-            await SessionModel.updateOne(
-                { ID: this.id },
-                { $set: { baileysCreds: JSON.parse(serialized) } },
-                { upsert: true }
-            ).exec()
-            this.state.creds = freshCreds
-        })
 
     private getKeys = async <T extends keyof SignalDataTypeMap>(
         type: T,

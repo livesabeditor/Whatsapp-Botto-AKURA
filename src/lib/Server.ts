@@ -30,7 +30,7 @@ export default class Server extends EventEmitter {
         this.app.post('/api/logout', this.logout)
         this.app.get('/api/status', this.requirePairingSession, this.status)
         this.app.use(express.static(join(__dirname, '..', '..', 'public'), { etag: false, maxAge: 0 }))
-        this.app.listen(PORT, () => this.client.log(`Server Started on PORT: ${PORT}`))
+        this.app.listen(PORT, '127.0.0.1', () => this.client.log(`Server Started on loopback port ${PORT}`))
     }
 
     login = (req: Request, res: Response): void => {
@@ -84,9 +84,16 @@ export default class Server extends EventEmitter {
     status = (_req: Request, res: Response): void => {
         const connected = this.client.state === 'open'
         const qrDataUrl = !connected && this.client.QR ? `data:image/png;base64,${this.client.QR.toString('base64')}` : null
+        const status = connected ? 'connected' : qrDataUrl ? 'waiting' : this.client.state
         res.json({
-            status: connected ? 'connected' : qrDataUrl ? 'waiting' : 'waiting',
-            message: connected ? 'WhatsApp is linked' : qrDataUrl ? 'Ready to scan' : 'Waiting for WhatsApp…',
+            status,
+            message: connected
+                ? 'WhatsApp is linked'
+                : qrDataUrl
+                ? 'Ready to scan'
+                : this.client.state === 'close'
+                ? 'Connection stopped; saved auth was preserved. Owner action is required.'
+                : 'Waiting for WhatsApp connection…',
             qrDataUrl
         })
     }

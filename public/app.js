@@ -46,7 +46,7 @@ async function refreshStatus() {
       placeholder.hidden = false;
       placeholder.textContent = state.status === 'connected'
         ? 'WhatsApp is linked. You can close this page.'
-        : 'Waiting for the QR code from WhatsApp…';
+        : state.message;
     }
     return true;
   } catch {
